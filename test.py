@@ -1,7 +1,7 @@
 from pd_tools import PDApp
 
 if __name__ == "__main__":
-    with PDApp() as app:
+    with PDApp('localhost', 5101) as app:
         app.help()
         app.subnodes[1].help()
 
@@ -12,5 +12,8 @@ if __name__ == "__main__":
     pdApp1.disconnect()
     pdApp2.connect()
     print(pdApp2.exc('help app.subnodes'))
+    pdApp2.disconnect()
+    pdApp2.connect()
+    print(pdApp2.exc('help app.subnodes[1]'))
     pdApp2.disconnect()
 

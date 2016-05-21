@@ -18,9 +18,10 @@ class PDApp(pdPythonLib.pdApp):
 
     ports_in_use = set()
 
-    def __init__(self, **conn_kwargs):
+    def __init__(self, *conn_args, **conn_kwargs):
         # inheriting from old style class requires explicit call to __init__
         pdPythonLib.pdApp.__init__(self)
+        self.conn_args = conn_args
         self.conn_kwargs = conn_kwargs
 
     def __enter__(self):
@@ -55,8 +56,10 @@ class PDApp(pdPythonLib.pdApp):
         os.spawnv(os.P_DETACH,path,[path,"-pt",repr(portNo)])
 
     def connect(self, *args, **kwargs):
-        conn_kwargs = self.conn_kwargs  if not kwargs else kwargs
-        self._connect(*args, **conn_kwargs)
+        if args or kwargs:
+            self._connect(*args, **kwargs)
+        else:
+            self._connect(*self.conn_args, **self.conn_kwargs)
 
     def _connect(self, hostname='localhost', port=5101, timeout=10.0):
         if self.appSock:
