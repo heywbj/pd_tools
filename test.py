@@ -4,16 +4,15 @@ if __name__ == "__main__":
     with PDApp('localhost', 5101) as app:
         app.help()
         app.subnodes[1].help()
+        print(app.subnodes[1].subnodes[1].width)
+        print(app.subnodes[1].subnodes[1].width)
+        print(app.subnodes[1].subnodes[1].width)
+        app.subnodes[1].help()
+        print(app.wdir)
 
-    pdApp1 = PDApp()
-    pdApp2 = PDApp()
-    pdApp1.connect()
-    print(pdApp1.exc('help app.wdir'))
-    pdApp1.disconnect()
-    pdApp2.connect()
-    print(pdApp2.exc('help app.subnodes'))
-    pdApp2.disconnect()
-    pdApp2.connect()
-    print(pdApp2.exc('help app.subnodes[1]'))
-    pdApp2.disconnect()
+        app.setwdir('C:\\')
+        print(app.wdir)
+
+        app.setwdir('D:\\Warren')
+        print(app.wdir)
 

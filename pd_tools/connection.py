@@ -5,8 +5,15 @@ import pdPythonLib
 
 from .wrapper import wrap
 
-__all__ = ['PDApp']
+__all__ = ['connect', 'PDApp']
 
+def connect(*args, **kwargs):
+    connection = PDApp(*args, **kwargs)
+    connection.connect()
+
+    app = wrap(connection, 'app')
+
+    return connection, app
 
 class PDApp(pdPythonLib.pdApp):
     """remedies some minor stuffs

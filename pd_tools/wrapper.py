@@ -6,6 +6,8 @@ accessors, function calls and assignment to fimmwave via variety of magic
 methods
 """
 import re
+import logging
+logger = logging.getLogger(__name__)
 
 __all__ = ['wrap']
 
@@ -18,41 +20,42 @@ _linepat = re.compile(r"""
             """, re.X)
 
 
-_cache = {}
+_cls_cache = {}
+_cls_types = set()
 
 def wrap(pd_app, path='app'):
     return _get_node(pd_app, path)
 
 
 def _get_node(pd_app, path):
-    global _cache
 
+    if path not in _cls_cache:
+        _create_node_class(pd_app, path)
+    cls = _cls_cache[path]
+    return cls()
+
+
+def _create_node_class(pd_app, path):
     info = _parse_help(_get_help(pd_app, path))
-
     nodetype = info['matchdict']['nodetype']
-    assert nodetype is not None
-
-    if path not in _cache:
-        _create_node_class(path, nodetype, info['attributes'])
-    cls = _cache[path]
-
-    node = cls(pd_app, path, **info['matchdict'])
-
-    return node
-
-
-def _create_node_class(path, nodetype, attributes):
-    global _cache
 
     attrs = {
         attribute['name']: Attribute(attribute['name'], attribute['nodetype'])
-        for attribute in attributes
+        for attribute in info['attributes']
     }
+
+    attrs['_pd_app'] = pd_app
+    attrs['_path'] = path
+    attrs['_nodetype'] = nodetype
 
     cls = type(nodetype, (Node,), attrs)
 
-    assert nodetype not in _cache
-    _cache[path] = cls
+    assert path not in _cls_cache
+    if nodetype not in _cls_types:
+        _cls_types.add(nodetype)
+        logger.debug('adding type %s' % nodetype)
+
+    _cls_cache[path] = cls
 
 
 def _join_path(path, attrname):
@@ -97,19 +100,19 @@ class Attribute(object):
         self.nodetype = nodetype
 
     def __get__(self, instance, owner):
-        path = _join_path(instance.path, self.name)
+        path = _join_path(instance._path, self.name)
 
         if self.nodetype in Node.PRIMITIVE_TYPES:
-            return instance.pd_app.Exec(path)
+            return instance._pd_app.Exec(path)
         else:
             if not hasattr(self, '_cached_node'):
-                self._cached_node = _get_node(instance.pd_app, path)
+                self._cached_node = _get_node(instance._pd_app, path)
             return self._cached_node
 
     def __set__(self, instance, value):
         if self.nodetype in Node.PRIMITIVE_TYPES:
-            return instance.pd_app.Exec('{path}={value}'.format(
-                path=_join_path(instance.path, self.name),
+            return instance._pd_app.Exec('{path}={value}'.format(
+                path=_join_path(instance._path, self.name),
                 value=_convert_arg(value)))
         else:
             raise TypeError('not a primitive: %s' % self)
@@ -123,24 +126,12 @@ class Node(object):
         'STRING',
     )
 
-    def __init__(self, pd_app, path, name, nodetype, description):
-        assert path is not None
-        assert nodetype is not None
-
-        self.pd_app = pd_app
-        self.path = path
-        self.name = name
-        self.nodetype = nodetype
-        self.description = description
-
-        self.stub = True
-
     def __getitem__(self, idx):
         """if we are in a list"""
-        if self.nodetype.startswith(self.LIST_TYPE):
-            node = _get_node(self.pd_app,
-                '{path}[{idx}]'.format(path=self.path, idx=_convert_arg(idx)))
-            if node.nodetype in self.PRIMITIVE_TYPES:
+        if self._nodetype.startswith(self.LIST_TYPE):
+            node = _get_node(self._pd_app,
+                '{path}[{idx}]'.format(path=self._path, idx=_convert_arg(idx)))
+            if node._nodetype in self.PRIMITIVE_TYPES:
                 return node.__get__(self)
             else:
                 return node
@@ -148,8 +139,8 @@ class Node(object):
             raise TypeError('not a list')
 
     def __len__(self):
-        if self.nodetype.startswith(self.LIST_TYPE):
-            r = self.pd_app.Exec(self.path)
+        if self._nodetype.startswith(self.LIST_TYPE):
+            r = self._pd_app.Exec(self._path)
             if type(r) is str and '<EMPTY>' in r:
                 return 0
             elif type(r) is list:
@@ -165,18 +156,15 @@ class Node(object):
 
     def __call__(self, *args):
         """callable if a function"""
-        if self.nodetype == self.FUNCTION_TYPE:
+        if self._nodetype == self.FUNCTION_TYPE:
             arglist = [_convert_arg(arg) for arg in args]
 
-            return self.pd_app.Exec(
+            return self._pd_app.Exec(
                 '{path}({args})'
-                .format(path=self.path, args=','.join(arglist)))
+                .format(path=self._path, args=','.join(arglist)))
         else:
             raise TypeError('not a function')
 
     def help(self):
-        print(_get_help(self.pd_app, self.path))
-
-    def __str__(self):
-        return self.path
+        print(_get_help(self._pd_app, self._path))
 
