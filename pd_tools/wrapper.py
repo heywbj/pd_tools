@@ -21,7 +21,6 @@ _linepat = re.compile(r"""
 
 
 _cls_cache = {}
-_cls_types = set()
 
 def wrap(pd_app, path='app'):
     return _get_node(pd_app, path)
@@ -29,11 +28,13 @@ def wrap(pd_app, path='app'):
 
 def _get_node(pd_app, path):
 
-    if path not in _cls_cache:
-        _create_node_class(pd_app, path)
-    cls = _cls_cache[path]
-    return cls()
-
+    if pd_app.batch:
+        return ShallowNode(pd_app, path)
+    else:
+        if path not in _cls_cache:
+            _create_node_class(pd_app, path)
+        cls = _cls_cache[path]
+        return cls()
 
 def _create_node_class(pd_app, path):
     info = _parse_help(_get_help(pd_app, path))
@@ -51,20 +52,32 @@ def _create_node_class(pd_app, path):
     cls = type(nodetype, (Node,), attrs)
 
     assert path not in _cls_cache
-    if nodetype not in _cls_types:
-        _cls_types.add(nodetype)
-        logger.debug('adding type %s' % nodetype)
 
     _cls_cache[path] = cls
+    logger.debug('added %s to cache' % path)
 
 
 def _join_path(path, attrname):
     return '{path}.{name}'.format(path=path, name=attrname)
 
 
+def _idx_path(path, idx):
+    return '{path}[{idx}]'.format(path=path, idx=_convert_arg(idx))
+
+
+def _assign_cmd(path, attr, value):
+    return '{path}={value}'.format(
+        path=_join_path(path, attr), value=_convert_arg(value))
+
+
+def _call_cmd(path, args):
+    arglist = [_convert_arg(arg) for arg in args]
+    return '{path}({args})'.format(path=path, args=','.join(arglist))
+
+
 def _get_help(pd_app, nodepath):
     """returns the help string for a given node"""
-    return pd_app.Exec('help {nodepath}'.format(nodepath=nodepath))
+    return pd_app.do_raise('help {nodepath}'.format(nodepath=nodepath))
 
 
 def _parse_help(helpstr):
@@ -91,7 +104,7 @@ def _parse_help(helpstr):
 
 
 def _convert_arg(arg):
-    return '%s' % arg if type(arg) is str else repr(arg)
+    return '"%s"' % arg if type(arg) is str else repr(arg)
 
 
 class Attribute(object):
@@ -103,7 +116,7 @@ class Attribute(object):
         path = _join_path(instance._path, self.name)
 
         if self.nodetype in Node.PRIMITIVE_TYPES:
-            return instance._pd_app.Exec(path)
+            return instance._pd_app.do_raise(path)
         else:
             if not hasattr(self, '_cached_node'):
                 self._cached_node = _get_node(instance._pd_app, path)
@@ -111,9 +124,8 @@ class Attribute(object):
 
     def __set__(self, instance, value):
         if self.nodetype in Node.PRIMITIVE_TYPES:
-            return instance._pd_app.Exec('{path}={value}'.format(
-                path=_join_path(instance._path, self.name),
-                value=_convert_arg(value)))
+            return instance._pd_app.do(
+                _assign_cmd(instance._path, self.name, value))
         else:
             raise TypeError('not a primitive: %s' % self)
 
@@ -129,8 +141,7 @@ class Node(object):
     def __getitem__(self, idx):
         """if we are in a list"""
         if self._nodetype.startswith(self.LIST_TYPE):
-            node = _get_node(self._pd_app,
-                '{path}[{idx}]'.format(path=self._path, idx=_convert_arg(idx)))
+            node = _get_node(self._pd_app, _idx_path(self._path, idx))
             if node._nodetype in self.PRIMITIVE_TYPES:
                 return node.__get__(self)
             else:
@@ -140,7 +151,7 @@ class Node(object):
 
     def __len__(self):
         if self._nodetype.startswith(self.LIST_TYPE):
-            r = self._pd_app.Exec(self._path)
+            r = self._pd_app.do_raise(self._path)
             if type(r) is str and '<EMPTY>' in r:
                 return 0
             elif type(r) is list:
@@ -157,14 +168,27 @@ class Node(object):
     def __call__(self, *args):
         """callable if a function"""
         if self._nodetype == self.FUNCTION_TYPE:
-            arglist = [_convert_arg(arg) for arg in args]
-
-            return self._pd_app.Exec(
-                '{path}({args})'
-                .format(path=self._path, args=','.join(arglist)))
+            return self._pd_app.do(_call_cmd(self._path, args))
         else:
             raise TypeError('not a function')
 
     def help(self):
         print(_get_help(self._pd_app, self._path))
 
+
+class ShallowNode(object):
+    def __init__(self, pd_app, path):
+        object.__setattr__(self, '_pd_app', pd_app)
+        object.__setattr__(self, '_path', path)
+
+    def __getattr__(self, name):
+        return ShallowNode(self._pd_app, _join_path(self._path, name))
+
+    def __setattr__(self, name, value):
+        return self._pd_app.do(_assign_cmd(self._path, name, value))
+
+    def __getitem__(self, idx):
+        return ShallowNode(self._pd_app, _idx_path(self._path, idx))
+
+    def __call__(self, *args):
+        return self._pd_app.do(_call_cmd(self._path, args))

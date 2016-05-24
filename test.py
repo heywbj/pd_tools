@@ -1,7 +1,14 @@
 from pd_tools import PDApp
 
 if __name__ == "__main__":
-    with PDApp('localhost', 5101) as app:
+    with PDApp(host='localhost', port=5101, commit=False) as app:
+        app.help()
+        app.subnodes[1].help()
+        app.subnodes[1].help()
+        app.setwdir(r'C:\\Users')
+        app.setwdir(r'D:\\Warren')
+
+    with PDApp(host='localhost', port=5101) as app:
         app.help()
         app.subnodes[1].help()
         print(app.subnodes[1].subnodes[1].width)
@@ -10,9 +17,7 @@ if __name__ == "__main__":
         app.subnodes[1].help()
         print(app.wdir)
 
-        app.setwdir('C:\\')
-        print(app.wdir)
+        app.setwdir(r'C:\\Users')
 
-        app.setwdir('D:\\Warren')
-        print(app.wdir)
+        app.setwdir(r'D:\\Warren')
 

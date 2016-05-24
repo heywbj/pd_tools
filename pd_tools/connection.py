@@ -1,18 +1,29 @@
+import logging
 import os
+import random
 import socket
+import time
 
 import pdPythonLib
 
 from .wrapper import wrap
 
 __all__ = ['connect', 'PDApp']
+logger = logging.getLogger(__name__)
 
-def connect(*args, **kwargs):
-    connection = PDApp(*args, **kwargs)
-    connection.connect()
+def start(path, port=None):
+
+    connection = PDApp()
+    connection.start(path, port)
 
     app = wrap(connection, 'app')
+    return connection, app
 
+def connect(host, port):
+    connection = PDApp()
+    connection.connect(host, port)
+
+    app = wrap(connection, 'app')
     return connection, app
 
 class PDApp(pdPythonLib.pdApp):
@@ -25,19 +36,32 @@ class PDApp(pdPythonLib.pdApp):
 
     ports_in_use = set()
 
-    def __init__(self, *conn_args, **conn_kwargs):
+    def __init__(self, path=None, host=None, port=None, batch=False):
         # inheriting from old style class requires explicit call to __init__
         pdPythonLib.pdApp.__init__(self)
-        self.conn_args = conn_args
-        self.conn_kwargs = conn_kwargs
+
+        self.host = host
+        self.path = path
+        self.port = port
+        self.batch = batch
 
     def __enter__(self):
         """Connect to fimmwave"""
-        self.connect(**self.conn_kwargs)
+        if self.path:
+            if self.host and self.host != 'localhost':
+                raise ValueError('do not provide both path and host')
+            self.start(self.path, self.port)
+        elif self.host:
+            self.connect(self.host, self.port)
+        else:
+            raise ValueError('neither host nor path provided')
+
         return wrap(self, 'app')
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Destroy the connection so someone else can connect on the port"""
+        if self.batch:
+            self.flush()
         self.disconnect()
 
     def __del__(self):
@@ -52,42 +76,74 @@ class PDApp(pdPythonLib.pdApp):
     def ConnectToApp1(self, *args, **kwargs):
         raise NotImplementedError
 
-    def StartApp(self, path, port):
+    def StartApp(self, path, portNo=5101):
+        self.start(path, portNo)
+
+    def start(self, path, port):
+        if port is None:
+            port = random.randrange(5000,6000)
+
         # Determine the drive letter, attempt to switch to that drive
-        a = rfind(path,"\\")
+        a = path.rfind("\\")
         if (a!=-1):
             if (path[0:a]==''):
                 os.chdir("\\")
             else:
                 os.chdir(path[0:a])
-        os.spawnv(os.P_DETACH,path,[path,"-pt",repr(portNo)])
+        os.spawnv(os.P_DETACH,path,[path,"-pt",repr(port)])
 
-    def connect(self, *args, **kwargs):
-        if args or kwargs:
-            self._connect(*args, **kwargs)
-        else:
-            self._connect(*self.conn_args, **self.conn_kwargs)
+        self.connect('localhost', port)
 
-    def _connect(self, hostname='localhost', port=5101, timeout=10.0):
+    def connect(self, host, port):
         if self.appSock:
             raise ValueError('already connected')
 
         if port in self.ports_in_use:
             raise ValueError('port %s in use' % port)
         else:
-            self.appSock = socket.create_connection((hostname, port), timeout)
-            self.ports_in_use.add(port)
-            self._port = port
+            appSock = None
+            for i in range(5):
+                try:
+                    appSock = socket.create_connection((host, port), 5.0)
+                    break
+                except:
+                    logger.debug('connection failed, retrying...')
+                    time.sleep(1)
+            if appSock:
+                self.appSock = appSock
+                self.ports_in_use.add(port)
+                self._port = port
+            else:
+                logger.error('failed to connect')
+
 
     def disconnect(self):
+        if self.cmdList:
+            logger.warn('there are pending commands')
+
         if self.appSock is not None:
             self.appSock.close()
             self.appSock = None
             self.ports_in_use.remove(self._port)
 
-    def exc(self, *args):
-        return self.Exec(*args)
+    def do(self, *args):
+        if self.batch:
+            logger.debug('batch cmd: %s', repr(args))
+            return self.AddCmd(*args)
+        else:
+            logger.debug('exec cmd: %s', repr(args))
+            return self.Exec(*args)
 
-    def add(self, *args):
-        return self.AddCmd(*args)
+    def do_raise(self, *args):
+        if self.batch:
+            raise ValueError('batch mode is ON')
+        else:
+            logger.debug('exec cmd: %s', repr(args))
+            return self.Exec(*args)
 
+    def flush(self):
+        if self.batch:
+            logger.debug('flushing batched commands')
+            return self.Exec('app') # 'app' is a dummy value
+        else:
+            raise ValueError('batch mode is OFF')
