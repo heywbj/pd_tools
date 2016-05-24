@@ -104,11 +104,11 @@ class PDApp(pdPythonLib.pdApp):
             appSock = None
             for i in range(5):
                 try:
-                    appSock = socket.create_connection((host, port), 5.0)
+                    appSock = socket.create_connection((host, port), 5)
                     break
                 except:
-                    logger.debug('connection failed, retrying...')
                     time.sleep(1)
+                    logger.debug('connection failed, retrying...')
             if appSock:
                 self.appSock = appSock
                 self.ports_in_use.add(port)

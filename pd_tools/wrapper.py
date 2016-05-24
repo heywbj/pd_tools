@@ -104,7 +104,7 @@ def _parse_help(helpstr):
 
 
 def _convert_arg(arg):
-    return '"%s"' % arg if type(arg) is str else repr(arg)
+    return '%s' % arg if type(arg) is str else repr(arg)
 
 
 class Attribute(object):
