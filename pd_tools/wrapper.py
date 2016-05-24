@@ -29,7 +29,7 @@ def wrap(pd_app, path='app'):
 def _get_node(pd_app, path):
 
     if pd_app.batch:
-        return ShallowNode(pd_app, path)
+        return ShadowNode(pd_app, path)
     else:
         if path not in _cls_cache:
             _create_node_class(pd_app, path)
@@ -176,19 +176,19 @@ class Node(object):
         print(_get_help(self._pd_app, self._path))
 
 
-class ShallowNode(object):
+class ShadowNode(object):
     def __init__(self, pd_app, path):
         object.__setattr__(self, '_pd_app', pd_app)
         object.__setattr__(self, '_path', path)
 
     def __getattr__(self, name):
-        return ShallowNode(self._pd_app, _join_path(self._path, name))
+        return ShadowNode(self._pd_app, _join_path(self._path, name))
 
     def __setattr__(self, name, value):
         return self._pd_app.do(_assign_cmd(self._path, name, value))
 
     def __getitem__(self, idx):
-        return ShallowNode(self._pd_app, _idx_path(self._path, idx))
+        return ShadowNode(self._pd_app, _idx_path(self._path, idx))
 
     def __call__(self, *args):
         return self._pd_app.do(_call_cmd(self._path, args))
