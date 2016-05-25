@@ -12,32 +12,54 @@ logger = logging.getLogger(__name__)
 __all__ = ['wrap']
 
 _linepat = re.compile(r"""
-            \s*?(?:(?P<name>\S+)\s+)? # the name
+            \s*(?P<name>\S+)\s+ # the name
             (?P<nodetype>\S+) # the type
-            (?:\s+-)? # optional hyphen
-            (?:\s+\(.*?\):)? # optional function arguments
-            (?P<description>\s+.*)? # the description
+            (?:
+                \s+-\s+ # optional hyphen + description
+                (?:\(.*?\):\s+)? # optional function args
+                (?P<description>.*)
+            )?$
             """, re.X)
+_typepat = re.compile(r'\s+(?P<nodetype>\S+)')
 
-
-_cls_cache = {}
 
 def wrap(pd_app, path='app'):
     return _get_node(pd_app, path)
 
 
 def _get_node(pd_app, path):
+    if path not in pd_app._cls_cache:
+        _create_node_class(pd_app, path)
+    cls = pd_app._cls_cache[path]
 
-    if pd_app.batch:
-        return ShadowNode(pd_app, path)
-    else:
-        if path not in _cls_cache:
-            _create_node_class(pd_app, path)
-        cls = _cls_cache[path]
-        return cls()
+    if not pd_app.batch and not cls._initialized:
+        _init_node_class(cls)
+
+    return cls()
+
 
 def _create_node_class(pd_app, path):
-    info = _parse_help(_get_help(pd_app, path))
+    attrs = {
+        '_pd_app': pd_app,
+        '_path': path,
+        '_initialized': False,
+    }
+
+    cls = type(path, (Node,), attrs)
+
+    assert path not in pd_app._cls_cache
+    pd_app._cls_cache[path] = cls
+
+    logger.debug('added %s to cache' % repr(path))
+
+
+def _init_node_class(cls):
+    """initializes the node from its help"""
+
+    assert cls._initialized is False
+    cls._initialized = True
+
+    info = _parse_help(_get_help(cls._pd_app, cls._path))
     nodetype = info['matchdict']['nodetype']
 
     attrs = {
@@ -45,17 +67,12 @@ def _create_node_class(pd_app, path):
         for attribute in info['attributes']
     }
 
-    attrs['_pd_app'] = pd_app
-    attrs['_path'] = path
     attrs['_nodetype'] = nodetype
 
-    cls = type(nodetype, (Node,), attrs)
+    for key, val in attrs.items():
+        setattr(cls, key, val)
 
-    assert path not in _cls_cache
-
-    _cls_cache[path] = cls
-    logger.debug('added %s to cache' % path)
-
+    logger.debug('initialized %s' % repr(cls._path))
 
 def _join_path(path, attrname):
     return '{path}.{name}'.format(path=path, name=attrname)
@@ -81,23 +98,33 @@ def _get_help(pd_app, nodepath):
 
 
 def _parse_help(helpstr):
+    logger.debug('parsing string: %s' % repr(helpstr))
+
+    # if it's an error, propagate it up
     if helpstr.startswith('ERROR'):
         raise ValueError(helpstr)
     lines = helpstr.split('\n')
 
     # match the first line
     match = _linepat.match(lines[0])
-    assert match is not None, \
-        'first line no match: %s' % lines[0]
+    if match is None:
+        match = _typepat.match(lines[0])
+    assert match is not None, 'first line no match: %s' % lines[0]
+    matchdict = match.groupdict(None)
+    logger.debug('matched params: %s' % repr(matchdict))
 
     # get a list of child attribute names
-    atts = [
-        _linepat.match(line).groupdict(None)
-        for line in lines[2:]
-    ] if len(lines) > 2 else []
+    atts = []
+    for line in lines[2:]:
+        m = _linepat.match(line)
+        if m is None:
+            logger.warn('discarding line: %s' % repr(line))
+            continue
+
+        atts.append(m.groupdict(None))
 
     rval = {}
-    rval['matchdict'] = match.groupdict(None)
+    rval['matchdict'] = matchdict
     rval['rawlines'] = lines
     rval['attributes'] = atts
     return rval
@@ -129,6 +156,9 @@ class Attribute(object):
         else:
             raise TypeError('not a primitive: %s' % self)
 
+    def __str__(self):
+        return '{n}[{t}]'.format(n=self.name, t=self.nodetype)
+
 class Node(object):
     FUNCTION_TYPE = 'FUNCTION'
     LIST_TYPE = 'LIST'
@@ -139,56 +169,85 @@ class Node(object):
     )
 
     def __getitem__(self, idx):
-        """if we are in a list"""
-        if self._nodetype.startswith(self.LIST_TYPE):
-            node = _get_node(self._pd_app, _idx_path(self._path, idx))
-            if node._nodetype in self.PRIMITIVE_TYPES:
-                return node.__get__(self)
+        """calls get_node. If the node it returns is initialized, do stuff"""
+        if self._initialized:
+            # initialized, do it
+            if self._nodetype.startswith(self.LIST_TYPE):
+                node = _get_node(self._pd_app, _idx_path(self._path, idx))
+                if node._nodetype in self.PRIMITIVE_TYPES:
+                    return node.__get__(self)
+                else:
+                    return node
             else:
-                return node
+                raise TypeError('not a list')
+        elif self._pd_app.batch:
+            # not initialized, but batch mode so flying blind
+            return _get_node(self._pd_app, _idx_path(self._path, idx))
         else:
-            raise TypeError('not a list')
+            # batch mode is off, but not initialized, so initialize it and try
+            # again
+            _init_node_class(self.__class__)
+            return self[idx]
 
     def __len__(self):
-        if self._nodetype.startswith(self.LIST_TYPE):
-            r = self._pd_app.do_raise(self._path)
-            if type(r) is str and '<EMPTY>' in r:
-                return 0
-            elif type(r) is list:
-                return len(r)
+        """does nothing if batch mode is ON"""
+        if self._initialized:
+            if self._nodetype.startswith(self.LIST_TYPE):
+                r = self._pd_app.do_raise(self._path)
+                if type(r) is str and '<EMPTY>' in r:
+                    return 0
+                elif type(r) is list:
+                    return len(r)
+                else:
+                    raise TypeError('not a list?')
             else:
-                raise TypeError('not a list?')
+                raise TypeError('not a list')
+        elif self._pd_app.batch:
+            raise ValueError('batch mode is ON')
         else:
-            raise TypeError('not a list')
+            _init_node_class(self.__class__)
+            return len(self)
+
+    def __getattr__(self, key):
+        """does nothing special if this is initialized (delegate to attribute),
+        if it is not initialized and batch mode OFF, initialize, then delegate.
+        otherwise calls _get_node for a child attribute"""
+        if self._initialized:
+            object.__getattr__(self, key)
+        elif self._pd_app.batch:
+            return _get_node(self._pd_app, _join_path(self._path, key))
+        else:
+            _init_node_class(self.__class__)
+            return getattr(self, key)
+
+    def __setattr__(self, key, value):
+        """if this instance is initialized, do nothing special (delegate to
+        attribute). if not initialized, add cmd"""
+        if self._initialized:
+            object.__setattr__(self, key, value)
+        elif self._pd_app.batch:
+            self._pd_app.do(_assign_cmd(self._path, key, value))
+        else:
+            _init_node_class(self.__class__)
+            setattr(self, key, value)
 
     def __iter__(self):
         for i in range(len(self)):
             yield self[i]
 
     def __call__(self, *args):
-        """callable if a function"""
-        if self._nodetype == self.FUNCTION_TYPE:
-            return self._pd_app.do(_call_cmd(self._path, args))
+        """if initialized, callable. if not initialized, still callable
+        (without checks)"""
+        if self._initialized:
+            if self._nodetype == self.FUNCTION_TYPE:
+                return self._pd_app.do(_call_cmd(self._path, args))
+            else:
+                raise TypeError('not a function')
+        elif self._pd_app.batch:
+            self._pd_app.do(_call_cmd(self._path, args))
         else:
-            raise TypeError('not a function')
+            _init_node_class(self.__class__)
+            return self(*args)
 
     def help(self):
         print(_get_help(self._pd_app, self._path))
-
-
-class ShadowNode(object):
-    def __init__(self, pd_app, path):
-        object.__setattr__(self, '_pd_app', pd_app)
-        object.__setattr__(self, '_path', path)
-
-    def __getattr__(self, name):
-        return ShadowNode(self._pd_app, _join_path(self._path, name))
-
-    def __setattr__(self, name, value):
-        return self._pd_app.do(_assign_cmd(self._path, name, value))
-
-    def __getitem__(self, idx):
-        return ShadowNode(self._pd_app, _idx_path(self._path, idx))
-
-    def __call__(self, *args):
-        return self._pd_app.do(_call_cmd(self._path, args))

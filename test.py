@@ -1,21 +1,22 @@
 from pd_tools import PDApp
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+FIMMWAVE = r'C:\Program Files (x86)\PhotonD\Fimmwave\bin64\fimmwave.exe'
 
 if __name__ == "__main__":
-    with PDApp(host='localhost', port=5101, commit=False) as app:
-        app.help()
-        app.subnodes[1].help()
-        app.subnodes[1].help()
+    c = PDApp(FIMMWAVE, port=5101, batch=True)
+    with c as app:
         app.setwdir(r'C:\\Users')
         app.setwdir(r'D:\\Warren')
+        app.addsubnode('fimmwave_prj', 'test project')
 
-    with PDApp(host='localhost', port=5101) as app:
-        app.help()
-        app.subnodes[1].help()
-        print(app.subnodes[1].subnodes[1].width)
-        print(app.subnodes[1].subnodes[1].width)
-        print(app.subnodes[1].subnodes[1].width)
-        app.subnodes[1].help()
+        c.toggle_mode()
         print(app.wdir)
+
+    with PDApp(host='localhost', port=5101, batch=False) as app:
+        print(app.wdir)
+        print(app.subnodes[1].numsubnodes())
 
         app.setwdir(r'C:\\Users')
 

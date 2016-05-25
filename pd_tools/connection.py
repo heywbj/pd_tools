@@ -95,6 +95,8 @@ class PDApp(pdPythonLib.pdApp):
         self.connect('localhost', port)
 
     def connect(self, host, port):
+        self._cls_cache = {}
+
         if self.appSock:
             raise ValueError('already connected')
 
@@ -140,6 +142,12 @@ class PDApp(pdPythonLib.pdApp):
         else:
             logger.debug('exec cmd: %s', repr(args))
             return self.Exec(*args)
+
+    def toggle_mode(self):
+        if self.batch:
+            self.flush()
+
+        self.batch = not self.batch
 
     def flush(self):
         if self.batch:
