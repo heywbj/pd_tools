@@ -51,17 +51,20 @@ def add_rwg(node, idx, name, slice_specs):
 def add_mwg(node, idx, name, width, height, shapespecs):
     node.addsubnode('mwguideNode', name)
     wg = node.subnodes[idx]
-    wg.width = 20
-    wg.height = 20
+    wg.width = width
+    wg.height = height
 
     for i in range(len(shapespecs)):
         shapespec = shapespecs[i]
         shape_idx = i + 1
 
-        wg.insertshape(shape_idx, shapespec['type'],
-            shapespec['x'], shapespec['y'])
+        wg.insertshape(shape_idx, shapespec['type'])
+
         shape = wg.shapes[shape_idx]
-        shape.setSize(shapespec['width'], shapespec['height'])
+        shape.xposn = shapespec['x']
+        shape.yposn = shapespec['y']
+        shape.width = shapespec['width']
+        shape.height = shapespec['height']
         shape.nr11 = shape.nr22 = shape.nr33 = shapespec['nr']
 
     return wg
