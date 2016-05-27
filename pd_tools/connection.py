@@ -44,6 +44,7 @@ class PDApp(pdPythonLib.pdApp):
         self.path = path
         self.port = port
         self.batch = batch
+        self.refcount = 0
 
     def __enter__(self):
         """Connect to fimmwave"""
@@ -104,9 +105,9 @@ class PDApp(pdPythonLib.pdApp):
             raise ValueError('port %s in use' % port)
         else:
             appSock = None
-            for i in range(5):
+            for i in range(8):
                 try:
-                    appSock = socket.create_connection((host, port), 5)
+                    appSock = socket.create_connection((host, port))
                     break
                 except:
                     time.sleep(1)
@@ -128,20 +129,39 @@ class PDApp(pdPythonLib.pdApp):
             self.appSock = None
             self.ports_in_use.remove(self._port)
 
-    def do(self, *args):
-        if self.batch:
-            logger.debug('batch cmd: %s', repr(args))
-            return self.AddCmd(*args)
-        else:
-            logger.debug('exec cmd: %s', repr(args))
-            return self.Exec(*args)
+    def ref(self, cmd):
+        """calls the command, but creates a ref of the output.
 
-    def do_raise(self, *args):
+        calls the command and creates a reference. then wraps that reference
+        and returns the wrapped thing"""
+
+        refname = "xx{idx}".format(idx=self.refcount)
+        self.refcount += 1
+
+        self.do("Ref& {r}={cmd}".format(r=refname, cmd=cmd))
+        return wrap(self, refname)
+
+    def set(self, cmd):
+        refname = "xx{idx}".format(idx=self.refcount)
+        self.refcount += 1
+
+        self.do("Set {r}={cmd}".format(r=refname, cmd=cmd))
+        return wrap(self, refname)
+
+    def do(self, cmd):
+        if self.batch:
+            logger.debug('batch cmd: %s', cmd)
+            return self.AddCmd(cmd)
+        else:
+            logger.debug('exec cmd: %s', cmd)
+            return self.Exec(cmd)
+
+    def do_raise(self, cmd):
         if self.batch:
             raise ValueError('batch mode is ON')
         else:
-            logger.debug('exec cmd: %s', repr(args))
-            return self.Exec(*args)
+            logger.debug('exec cmd: %s', cmd)
+            return self.Exec(cmd)
 
     def toggle_mode(self):
         if self.batch:

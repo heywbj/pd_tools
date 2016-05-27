@@ -166,6 +166,7 @@ class Node(object):
         'INTEGER',
         'FLOAT',
         'STRING',
+        'MATRIX<COMPLEX>'
     )
 
     def __getitem__(self, idx):
@@ -235,16 +236,24 @@ class Node(object):
         for i in range(len(self)):
             yield self[i]
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         """if initialized, callable. if not initialized, still callable
         (without checks)"""
-        if self._initialized:
-            if self._nodetype == self.FUNCTION_TYPE:
-                return self._pd_app.do(_call_cmd(self._path, args))
+        get_set = kwargs.get('get_set', None)
+        get_ref = kwargs.get('get_ref', None)
+        if self._initialized and self._nodetype != self.FUNCTION_TYPE:
+            raise TypeError('not a function')
+        elif (
+                self._initialized and self._nodetype == self.FUNCTION_TYPE
+                or
+                self._pd_app.batch):
+            cmd = _call_cmd(self._path, args)
+            if get_ref:
+                return self._pd_app.ref(cmd)
+            elif get_set:
+                return self._pd_app.set(cmd)
             else:
-                raise TypeError('not a function')
-        elif self._pd_app.batch:
-            self._pd_app.do(_call_cmd(self._path, args))
+                return self._pd_app.do(cmd)
         else:
             _init_node_class(self.__class__)
             return self(*args)

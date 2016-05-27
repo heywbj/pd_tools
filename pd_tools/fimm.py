@@ -1,4 +1,6 @@
 """convenience functions for fimmwave"""
+import numpy
+import re
 
 def add_vars(node, idx, name, var_dict):
     node.addsubnode('pdVariablesNode', name)
@@ -91,9 +93,122 @@ def add_device(node, idx, name, elspecs):
 
         elif elspec['type'] == 'sjoint':
             comp.newsjoint(elidx)
+            joint = comp.eltlist[elidx]
 
+            joint.method = elspec['method']
         else:
             raise NotImplementedError(
                 'unrecognized element type %s' % repr(elspec['type']))
 
-    return dev, comp
+    return dev
+
+def strip_matrix(m):
+    """gets rid of first column and first row"""
+    return numpy.array(m[1:])[:,1:]
+
+def get_rhs_evlist(dev):
+    return dev.cdev.getrhsevlist(get_ref=True)
+
+def load_amf(path):
+    # pattern for generic floating-point number, and generic integer
+    float_p = r'[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?'
+    int_p = r'[-+]?\d+'
+    uint_p = r'\d+'
+    bool_p = r'[01]'
+
+    results = {}
+    def append_to_results(d):
+        assert d is not None
+        for k,v in d.items():
+            results[k] = v
+
+    with open(path, 'r') as f:
+
+
+        # read first line
+        assert 'begin <amf(1.0)>' in f.readline()
+
+        # second line, matrix dimensions
+        append_to_results(re.search(
+            r'''(?P<nx>{ui})\s+
+                (?P<ny>{ui})\s+
+                //nxseg nyseg'''.format(ui=uint_p),
+            f.readline(),
+            re.X))
+
+        # third line, physical dimensions
+        append_to_results(re.search(
+            r'''(?P<xmin>{f})\s+
+                (?P<xmax>{f})\s+
+                (?P<ymin>{f})\s+
+                (?P<ymax>{f})\s+
+                //xmin xmax ymin ymax'''.format(f=float_p),
+            f.readline(),
+            re.X))
+
+        # fourth line, field components included
+        append_to_results(re.search(
+            r'''(?P<hasEX>{b})\s+
+                (?P<hasEY>{b})\s+
+                (?P<hasEZ>{b})\s+
+                (?P<hasHX>{b})\s+
+                (?P<hasHY>{b})\s+
+                (?P<hasHZ>{b})\s+
+                //hasEX hasEY hasEZ hasHX hasHY hasHZ'''.format(b=bool_p),
+            f.readline(),
+            re.X))
+
+        # fifth line, propagation constant
+        append_to_results(re.search(
+            r'''(?P<beta_r>{f})\s+
+                (?P<beta_i}{f})\s+
+                //beta'''.format(f=float_p),
+            f.readline(),
+            re.X))
+
+        # sixth line, wavelength
+        append_to_results(re.search(
+            r'''(?<lambda>{f})\s+
+                //lambda'''.format(f=float_p),
+            f.readline(),
+            re.X))
+
+        # seventh line, iscomplex
+        append_to_results(re.search(
+            r'''(?<iscomplex>{b})\s+
+                //iscomplex'''.format(b=bool_p),
+            f.readline(),
+            re.X))
+
+        # eigth line, isWGmode
+        append_to_results(re.search(
+            r'''(?<isWGmode>{b})\s+
+                //isWGmode'''.format(b=bool_p),
+            f.readline(),
+            re.X))
+        append_to_results(re.search(
+            f.readline(),
+            re.X))
+
+        # ninth line
+        assert '//components follow as nyseg by nxseg matrices' in f.readline()
+
+        # data
+
+        header_re = re.compile(r'\s+//(?P<n>\w+) components')
+        end_re = re.compile(r'\s+end')
+        split_re = re.compile(r'\s+')
+        curr_comp = None
+        for line in iter(f.readline, ''):
+            hm = header_re.match(line)
+            if hm is not None:
+                curr_comp = hm.groupdict()['n']
+                results[curr_comp] = []
+            elif end_re.match(line)
+                break
+            else:
+                assert curr_comp is not None
+                results[curr_comp].append(
+                    map(float, split_re.split(line)))
+
+        return results
