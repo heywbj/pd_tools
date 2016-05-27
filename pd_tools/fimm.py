@@ -117,22 +117,22 @@ def load_amf(path):
     bool_p = r'[01]'
 
     results = {}
-    def append_to_results(d):
-        assert d is not None
-        for k,v in d.items():
+    def append_to_results(m):
+        assert m is not None
+        for k,v in m.groupdict().items():
             results[k] = v
 
     with open(path, 'r') as f:
 
 
         # read first line
-        assert 'begin <amf(1.0)>' in f.readline()
+        assert f.readline().startswith('begin')
 
         # second line, matrix dimensions
         append_to_results(re.search(
             r'''(?P<nx>{ui})\s+
                 (?P<ny>{ui})\s+
-                //nxseg nyseg'''.format(ui=uint_p),
+                //nxseg\ nyseg'''.format(ui=uint_p),
             f.readline(),
             re.X))
 
@@ -142,7 +142,7 @@ def load_amf(path):
                 (?P<xmax>{f})\s+
                 (?P<ymin>{f})\s+
                 (?P<ymax>{f})\s+
-                //xmin xmax ymin ymax'''.format(f=float_p),
+                //xmin\ xmax\ ymin\ ymax'''.format(f=float_p),
             f.readline(),
             re.X))
 
@@ -154,39 +154,36 @@ def load_amf(path):
                 (?P<hasHX>{b})\s+
                 (?P<hasHY>{b})\s+
                 (?P<hasHZ>{b})\s+
-                //hasEX hasEY hasEZ hasHX hasHY hasHZ'''.format(b=bool_p),
+                //hasEX\ hasEY\ hasEZ\ hasHX\ hasHY\ hasHZ'''.format(b=bool_p),
             f.readline(),
             re.X))
 
         # fifth line, propagation constant
         append_to_results(re.search(
             r'''(?P<beta_r>{f})\s+
-                (?P<beta_i}{f})\s+
+                (?P<beta_i>{f})\s+
                 //beta'''.format(f=float_p),
             f.readline(),
             re.X))
 
         # sixth line, wavelength
         append_to_results(re.search(
-            r'''(?<lambda>{f})\s+
+            r'''(?P<lambda>{f})\s+
                 //lambda'''.format(f=float_p),
             f.readline(),
             re.X))
 
         # seventh line, iscomplex
         append_to_results(re.search(
-            r'''(?<iscomplex>{b})\s+
+            r'''(?P<iscomplex>{b})\s+
                 //iscomplex'''.format(b=bool_p),
             f.readline(),
             re.X))
 
         # eigth line, isWGmode
         append_to_results(re.search(
-            r'''(?<isWGmode>{b})\s+
+            r'''(?P<isWGmode>{b})\s+
                 //isWGmode'''.format(b=bool_p),
-            f.readline(),
-            re.X))
-        append_to_results(re.search(
             f.readline(),
             re.X))
 
@@ -196,19 +193,29 @@ def load_amf(path):
         # data
 
         header_re = re.compile(r'\s+//(?P<n>\w+) components')
-        end_re = re.compile(r'\s+end')
         split_re = re.compile(r'\s+')
         curr_comp = None
+        curr_data = None
         for line in iter(f.readline, ''):
             hm = header_re.match(line)
             if hm is not None:
+                if curr_data is not None:
+                    results[curr_comp] = numpy.array(curr_data).transpose()
+
+                curr_data = []
                 curr_comp = hm.groupdict()['n']
-                results[curr_comp] = []
-            elif end_re.match(line)
+            elif line.startswith('end'):
+                if curr_data is not None:
+                    results[curr_comp] = numpy.array(curr_data).transpose()
+
                 break
             else:
+                assert curr_data is not None
                 assert curr_comp is not None
-                results[curr_comp].append(
-                    map(float, split_re.split(line)))
+
+                curr_data.append(
+                    map(float, split_re.split(line.strip())))
 
         return results
+
+
