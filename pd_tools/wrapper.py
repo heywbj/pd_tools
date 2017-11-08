@@ -233,7 +233,7 @@ class Node(object):
             setattr(self, key, value)
 
     def __iter__(self):
-        for i in range(len(self)):
+        for i in range(1,len(self)+1):
             yield self[i]
 
     def __call__(self, *args, **kwargs):

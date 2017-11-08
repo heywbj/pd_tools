@@ -11,7 +11,7 @@ import pd_tools
 logging.basicConfig()
 
 FIMMWAVE = r'C:\Program Files (x86)\PhotonD\Fimmwave\bin64\fimmwave.exe'
-wd = r'D:\Warren\results'
+wd = r'D:\Warren\2017-10-17-testing'
 
 n_sio = 1.443
 n_sin = 1.93

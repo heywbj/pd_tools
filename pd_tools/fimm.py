@@ -20,9 +20,12 @@ def config_solver(node, mlp, svp):
         setattr(node.evlist.svp, key, val)
 
 
-def add_rwg(node, idx, name, slice_specs):
+def add_rwg(node, idx, name, slice_specs, material_db = None):
     node.addsubnode('rwguideNode', name)
     wg = node.subnodes[idx]
+
+    if material_db:
+        wg.setmaterbase(material_db)
 
     for i in range(len(slice_specs)):
         slice_idx = i + 1
@@ -44,9 +47,14 @@ def add_rwg(node, idx, name, slice_specs):
 
             # set the layer specs
             spec = layer_specs[i]
-            l.size = spec['size']
-            l.nr11 = l.nr22 = l.nr33 = spec['nr']
 
+            for key, val in spec.items():
+                if key == 'nr':
+                    l.nr11 = l.nr22 = l.nr33 = val
+                elif key == 'material':
+                    l.setMAT(spec['material'])
+                else:
+                    setattr(l, key, val)
     return wg
 
 
@@ -192,6 +200,8 @@ def load_amf(path):
 
         # data
 
+        iscomplex = results['iscomplex']
+
         header_re = re.compile(r'\s+//(?P<n>\w+) components')
         split_re = re.compile(r'\s+')
         curr_comp = None
@@ -213,8 +223,11 @@ def load_amf(path):
                 assert curr_data is not None
                 assert curr_comp is not None
 
-                curr_data.append(
-                    map(float, split_re.split(line.strip())))
+                data = map(float, split_re.split(line.strip()))
+                if iscomplex:
+                    data = [complex(*pair) for pair in
+                            numpy.reshape(data, (len(data)/2,2))]
+                curr_data.append(data)
 
         return results
 
