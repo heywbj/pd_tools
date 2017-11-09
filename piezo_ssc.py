@@ -247,7 +247,7 @@ if __name__ == "__main__":
                         scat_lr = coupler.cdev.smat.lr
                         connection.toggle_mode()
 
-                        scatter_series.append(abs(scat_lr[0, 0]))
+                        scatter_series.append(abs(scat_lr[0][0]))
 
                     # coupling coefficients, plot and save
                     pyplot.figure(1)
