@@ -205,10 +205,6 @@ if __name__ == "__main__":
                 y_offset,
             )
 
-        def strip_matrix(m):
-            """gets rid of first column and first row"""
-            return numpy.array(m[1:])[:,1:]
-
         t_cores = [0.09, 0.175]
         t_u_clads = [1, 2, 4]
         t_l_clads = [2, 4]
@@ -246,7 +242,9 @@ if __name__ == "__main__":
 
                         # drop out of batch mode to get the scattering matrix
                         connection.toggle_mode()
-                        scat_lr = strip_matrix(coupler.cdev.smat.lr)
+
+                        # note: may contain null-padded lists
+                        scat_lr = coupler.cdev.smat.lr
                         connection.toggle_mode()
 
                         scatter_series.append(abs(scat_lr[0, 0]))

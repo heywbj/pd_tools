@@ -36,7 +36,7 @@ def getNextAvailablePort():
         if (a==1):
             break
         nextPortAvailable = nextPortAvailable + 1
-    return nextPortAvailable 
+    return nextPortAvailable
 
 def getNumOrStr(msgstr):
     if (msgstr[0]=='('):
@@ -138,26 +138,29 @@ def InterpretString3(msgstr):
             return msgstr
 
         # Now we know it's an array
-        # 2017/10/19 warren - WTF is this
-        for i in range(0,idx1Start):
-            arrList.append(None) #fill array up to the first index
+
+        # 2017/10/19 warren - no null-padded lists
+        # for i in range(0,idx1Start):
+        #    arrList.append(None) #fill array up to the first index
 
         if (nextIdx==(len(testStr)-1)): #single-array
-            return map(getNumOrStr, arrStr)
             # 2017/10/19 warren - skips ever other entry, why?
             # for i in range(1,arrStrlen-1,2):
             #    arrList.append(getNumOrStr(arrStr[i]))
             # return arrList
+            import pdb; pdb.set_trace()
+            return map(getNumOrStr, arrStr)
         nextIdx = nextIdx +1
         if (testStr[nextIdx]!='['):
             #2017/10/19 warren - code is highly suspect.
-            import pdb; pdb.set_trace()
+            raise NotImplementedError('unrecognized format', msgstr)
             return msgstr
         currIdx = find(testStr[nextIdx:],']') + nextIdx
         if (currIdx!=-1):
             try:
                 idx2Start = int(testStr[nextIdx+1:currIdx])
             except:
+                raise NotImplementedError('unrecognized format', msgstr)
                 return msgstr
             #Now we know it's a 2d array
             idx1 = -1
@@ -173,14 +176,13 @@ def InterpretString3(msgstr):
                 if (x!=idx1): #next row of matrix
                     idx1 = x
                     arrList.append([])
-                    for k in range(0,idx2Start):
-                        arrList[idx1].append(None)
-                        #fill inner list(array) up to first index
+                    # 2017/11/08 warren - no null padded lists
+                    # for k in range(0,idx2Start):
+                    #     #fill inner list(array) up to first index
+                    #     arrList[idx1].append(None)
                 arrList[idx1].append(getNumOrStr(arrStr[i+1]))
 
-            #2017/10/19 warren - code is highly suspect.
-            import pdb; pdb.set_trace()
-            return arrList                               
+            return arrList
     else:
         return getNumOrStr(msgstr)
 
