@@ -7,6 +7,7 @@ methods
 """
 import re
 import logging
+import sys
 logger = logging.getLogger(__name__)
 
 __all__ = ['wrap']
@@ -59,7 +60,8 @@ def _init_node_class(cls):
     assert cls._initialized is False
     cls._initialized = True
 
-    info = _parse_help(_get_help(cls._pd_app, cls._path))
+    raw_help = _get_help(cls._pd_app, cls._path)
+    info = _parse_help(raw_help)
     nodetype = info['matchdict']['nodetype']
 
     attrs = {
@@ -68,6 +70,10 @@ def _init_node_class(cls):
     }
 
     attrs['_nodetype'] = nodetype
+
+    if sys.version_info >= (3,3):
+        # docstrings not mutable until Python 3.3
+        attrs['__doc__'] = raw_help
 
     for key, val in attrs.items():
         setattr(cls, key, val)
@@ -214,7 +220,7 @@ class Node(object):
         if it is not initialized and batch mode OFF, initialize, then delegate.
         otherwise calls _get_node for a child attribute"""
         if self._initialized:
-            object.__getattr__(self, key)
+            object.__getattribute__(self, key)
         elif self._pd_app.batch:
             return _get_node(self._pd_app, _join_path(self._path, key))
         else:
@@ -257,6 +263,14 @@ class Node(object):
         else:
             _init_node_class(self.__class__)
             return self(*args)
+
+    def __str__(self):
+        return '{path}[{nodetype}]'.format(
+            path=self._path, nodetype=self._nodetype)
+
+    def __repr__(self):
+        return '<Node {path}[{nodetype}]>'.format(
+            path=self._path, nodetype=self._nodetype)
 
     def help(self):
         print(_get_help(self._pd_app, self._path))
