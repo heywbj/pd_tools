@@ -69,13 +69,15 @@ def add_mwg(node, idx, name, width, height, shapespecs):
         shape_idx = i + 1
 
         wg.insertshape(shape_idx, shapespec['type'])
-
         shape = wg.shapes[shape_idx]
-        shape.xposn = shapespec['x']
-        shape.yposn = shapespec['y']
-        shape.width = shapespec['width']
-        shape.height = shapespec['height']
-        shape.nr11 = shape.nr22 = shape.nr33 = shapespec['nr']
+
+        for key, val in shapespec.items():
+            if key == 'nr':
+                shape.nr11 = shape.nr22 = shape.nr33 = shapespec['nr']
+            elif key == 'type':
+                continue
+            else:
+                setattr(shape, key, val)
 
     return wg
 
@@ -109,13 +111,6 @@ def add_device(node, idx, name, elspecs):
                 'unrecognized element type %s' % repr(elspec['type']))
 
     return dev
-
-def strip_matrix(m):
-    """gets rid of first column and first row"""
-    return numpy.array(m[1:])[:,1:]
-
-def get_rhs_evlist(dev):
-    return dev.cdev.getrhsevlist(get_ref=True)
 
 def load_amf(path):
     # pattern for generic floating-point number, and generic integer

@@ -60,16 +60,16 @@ if __name__ == "__main__":
             [
                 {
                     'type': 'ellipse',
-                    'x': 'w_sim/2',
-                    'y': 't_sim/2',
+                    'xposn': 'w_sim/2',
+                    'yposn': 't_sim/2',
                     'width': 14,
                     'height': 14,
                     'nr': 1.49,
                 },
                 {
                     'type': 'rectangle',
-                    'x': 'w_sim/2',
-                    'y': 't_sim/2',
+                    'xposn': 'w_sim/2',
+                    'yposn': 't_sim/2',
                     'width': 'w_sim',
                     'height': 't_sim',
                     'nr': 1.443,
@@ -205,6 +205,10 @@ if __name__ == "__main__":
                 y_offset,
             )
 
+        def strip_matrix(m):
+            """gets rid of first column and first row"""
+            return numpy.array(m[1:])[:,1:]
+
         t_cores = [0.09, 0.175]
         t_u_clads = [1, 2, 4]
         t_l_clads = [2, 4]
@@ -242,7 +246,7 @@ if __name__ == "__main__":
 
                         # drop out of batch mode to get the scattering matrix
                         connection.toggle_mode()
-                        scat_lr = pd_tools.fimm.strip_matrix(coupler.cdev.smat.lr)
+                        scat_lr = strip_matrix(coupler.cdev.smat.lr)
                         connection.toggle_mode()
 
                         scatter_series.append(abs(scat_lr[0, 0]))
