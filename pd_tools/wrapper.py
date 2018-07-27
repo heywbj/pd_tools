@@ -119,15 +119,19 @@ def _parse_help(helpstr):
     matchdict = match.groupdict(None)
     logger.debug('matched params: %s' % repr(matchdict))
 
-    # get a list of child attribute names
     atts = []
-    for line in lines[2:]:
-        m = _linepat.match(line)
-        if m is None:
-            logger.warn('discarding line: %s' % repr(line))
-            continue
+    childlines = lines[2:]
+    if len(childlines) > 0:
+        assert lines[1] == 'Children:'
 
-        atts.append(m.groupdict(None))
+        # get a list of child attribute names
+        for line in childlines:
+            m = _linepat.match(line)
+            if m is None:
+                logger.warn('discarding line: %s' % repr(line))
+                continue
+
+            atts.append(m.groupdict(None))
 
     rval = {}
     rval['matchdict'] = matchdict
